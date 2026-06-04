@@ -35,9 +35,38 @@ Accepted environment variable names:
 1. `ATLAS_CLEANROOM_WEBHOOK_SECRET`
 2. `MAXHERMES_CLEANROOM_WEBHOOK_SECRET`
 
+Temporary pairing token names:
+
+1. `ATLAS_CLEANROOM_PAIRING_TOKEN`
+2. `MAXHERMES_CLEANROOM_PAIRING_TOKEN`
+
 If neither exists, fail closed with exactly:
 
-`My hosted runtime is missing the clean-room webhook secret, but the Azure endpoint exists.`
+`My hosted runtime is missing the clean-room webhook secret or short-lived pairing token, but the Azure endpoint exists.`
+
+## Short-Lived Pairing
+
+If MiniMax has no secure permanent secret mount, use a short-lived pairing token.
+
+Start pairing:
+
+```bash
+python3 scripts/atlas_cleanroom_bridge.py pairing-start
+```
+
+Give Codex/operator the returned `pairingId` and `verificationCode`. After Codex approves it, exchange it:
+
+```bash
+python3 scripts/atlas_cleanroom_bridge.py pairing-exchange <pairingId> <verificationCode>
+```
+
+Then set the returned token only for the current session:
+
+```bash
+export ATLAS_CLEANROOM_PAIRING_TOKEN='<short-lived-token>'
+```
+
+Pairing tokens are temporary, scoped, and not replacements for a proper MiniMax hosted secret manager.
 
 ## Available Actions
 
@@ -62,16 +91,16 @@ python3 scripts/atlas_cleanroom_bridge.py public-status
 Expected canonical status as of June 4, 2026:
 
 - 23 total clean-room connectors
-- 9 configured at the readiness layer
-- 14 blocked pending fresh Key Vault values and smoke tests
+- 10 configured at the readiness layer
+- 13 blocked pending fresh Key Vault values and smoke tests
 
 Configured/readiness connectors:
 
-`notion`, `mavis`, `maxhermes`, `maxclaw`, `factoryai`, `onyx`, `obsidian`, `wiki`, `memory`
+`notion`, `mavis`, `maxhermes`, `maxclaw`, `factoryai`, `onyx`, `firecrawl`, `obsidian`, `wiki`, `memory`
 
 Blocked connectors:
 
-`openrouter`, `openclaw`, `firecrawl`, `brave`, `outlook`, `slack`, `mem0`, `zep`, `pinecone`, `box`, `filevine`, `leaddocket`, `domo`, `qbo`
+`openrouter`, `openclaw`, `brave`, `outlook`, `slack`, `mem0`, `zep`, `pinecone`, `box`, `filevine`, `leaddocket`, `domo`, `qbo`
 
 ### Knowledge Query
 
