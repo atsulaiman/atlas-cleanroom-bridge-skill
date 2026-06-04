@@ -61,6 +61,32 @@ def post(path: str, payload: dict) -> dict:
         }
 
 
+def get_public(path: str) -> dict:
+    request = urllib.request.Request(
+        f"{BASE_URL}{path}",
+        method="GET",
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "MaxHermes-Atlas-Cleanroom-Bridge/1.0",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=45) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        response_text = error.read().decode("utf-8", errors="replace")
+        try:
+            response_body = json.loads(response_text)
+        except json.JSONDecodeError:
+            response_body = {"error": response_text}
+        return {
+            "ok": False,
+            "httpStatus": error.code,
+            "status": response_body.get("status", "cleanroom_http_error"),
+            "response": response_body,
+        }
+
+
 def summarize_status(body: dict) -> dict:
     connectors = body.get("connectors", [])
     return {
@@ -80,7 +106,7 @@ def summarize_status(body: dict) -> dict:
 def main(argv: list[str]) -> int:
     if len(argv) < 2 or argv[1] in {"-h", "--help", "help"}:
         print(
-            "Usage: atlas_cleanroom_bridge.py status | query <text> | factory | control",
+            "Usage: atlas_cleanroom_bridge.py status | public-status | query <text> | factory | control",
             file=sys.stderr,
         )
         return 2
@@ -93,6 +119,15 @@ def main(argv: list[str]) -> int:
                     summarize_status(
                         post("/connectors/maxhermes/tool-status", {})
                     ),
+                    indent=2,
+                )
+            )
+            return 0
+
+        if command == "public-status":
+            print(
+                json.dumps(
+                    get_public("/public/maxhermes/tool-status"),
                     indent=2,
                 )
             )
@@ -147,4 +182,3 @@ def main(argv: list[str]) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main(sys.argv))
-

@@ -51,6 +51,14 @@ Use before claiming that any tool is connected.
 python3 scripts/atlas_cleanroom_bridge.py status
 ```
 
+If the hosted runtime does not have `ATLAS_CLEANROOM_WEBHOOK_SECRET`, use the public read-only status fallback:
+
+```bash
+python3 scripts/atlas_cleanroom_bridge.py public-status
+```
+
+`public-status` never sends a secret and never returns missing secret/config names, source records, Notion content, Onyx results, or private data. It returns only sanitized connector counts plus configured/blocked connector IDs. Use it only for answering "what is connected?" or "what is blocked?" Private knowledge queries, Factory checks, control-plane sync, writes, and source retrieval still require the authenticated bridge.
+
 Expected canonical status as of June 4, 2026:
 
 - 23 total clean-room connectors
@@ -104,4 +112,5 @@ python3 scripts/atlas_cleanroom_bridge.py control
 - Never expose secrets or raw authorization headers.
 - Prefer concise operational answers with the next missing connector named clearly.
 - If the script reports missing runtime secret, say that MiniMax needs a secure secret/environment variable for `ATLAS_CLEANROOM_WEBHOOK_SECRET`; do not ask Ahmad to paste it into chat.
+- If the runtime secret is missing and Ahmad only asks for connector status, run `public-status` and clearly say that private actions still require authenticated bridge access.
 - If MiniMax offers only the agent-facing `secret` function with a plaintext `--value` argument, do not use it for this webhook secret. Recommend a platform secret mount, human-entered masked secret UI, or a future short-lived pairing flow instead.
