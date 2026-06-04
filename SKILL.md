@@ -26,6 +26,10 @@ Never use:
 
 Never print, store, summarize, or ask Ahmad to paste the clean-room webhook secret. The API secret must come from a secure MiniMax runtime secret or environment variable.
 
+Do not populate the MiniMax secret store by asking an agent to call `secret({ command: "create", args: "--name=... --value=PLAINTEXT" })` in chat. As verified on June 4, 2026, that agent-facing path passes the plaintext value through tool-call arguments and can place the secret in transcripts. It is acceptable only for non-secret placeholders or if MiniMax later provides a confirmed masked-entry surface.
+
+If MiniMax does not expose a secure UI, API, CLI, OAuth, masked-input, or platform secret-mount flow, fail closed and tell Ahmad that MaxHermes needs a transcript-free runtime secret injection path before direct API calls can run.
+
 Accepted environment variable names:
 
 1. `ATLAS_CLEANROOM_WEBHOOK_SECRET`
@@ -100,4 +104,4 @@ python3 scripts/atlas_cleanroom_bridge.py control
 - Never expose secrets or raw authorization headers.
 - Prefer concise operational answers with the next missing connector named clearly.
 - If the script reports missing runtime secret, say that MiniMax needs a secure secret/environment variable for `ATLAS_CLEANROOM_WEBHOOK_SECRET`; do not ask Ahmad to paste it into chat.
-
+- If MiniMax offers only the agent-facing `secret` function with a plaintext `--value` argument, do not use it for this webhook secret. Recommend a platform secret mount, human-entered masked secret UI, or a future short-lived pairing flow instead.
