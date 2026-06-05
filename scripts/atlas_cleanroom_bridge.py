@@ -15,9 +15,14 @@ import urllib.request
 
 
 BASE_URL = "https://atlas-cleanroom-api.azurewebsites.net"
+CONTROL_PLANE_URL = "https://atlas-maxhermes-control-plane.azurewebsites.net"
 SECRET_ENV_NAMES = (
     "ATLAS_CLEANROOM_WEBHOOK_SECRET",
     "MAXHERMES_CLEANROOM_WEBHOOK_SECRET",
+)
+CONTROL_PLANE_SECRET_ENV_NAMES = (
+    "MAXHERMES_CONTROL_PLANE_CLIENT_SECRET",
+    "ATLAS_MAXHERMES_CONTROL_PLANE_CLIENT_SECRET",
 )
 PAIRING_TOKEN_ENV_NAMES = (
     "ATLAS_CLEANROOM_PAIRING_TOKEN",
@@ -41,18 +46,29 @@ def cleanroom_auth_headers() -> dict:
     )
 
 
-def post(path: str, payload: dict) -> dict:
+def control_plane_auth_headers() -> dict:
+    for name in CONTROL_PLANE_SECRET_ENV_NAMES:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return {"x-atlas-maxhermes-control-secret": value}
+
+    raise RuntimeError(
+        "My hosted runtime can reach the Azure MaxHermes control plane, but it does not have private control-plane authentication mounted."
+    )
+
+
+def post(path: str, payload: dict, base_url: str = BASE_URL, headers: dict | None = None) -> dict:
     body = json.dumps(payload).encode("utf-8")
-    headers = {
+    request_headers = {
         "Content-Type": "application/json",
         "User-Agent": "MaxHermes-Atlas-Cleanroom-Bridge/1.0",
     }
-    headers.update(cleanroom_auth_headers())
+    request_headers.update(headers or cleanroom_auth_headers())
     request = urllib.request.Request(
-        f"{BASE_URL}{path}",
+        f"{base_url}{path}",
         data=body,
         method="POST",
-        headers=headers,
+        headers=request_headers,
     )
     try:
         with urllib.request.urlopen(request, timeout=45) as response:
@@ -99,9 +115,9 @@ def post_public(path: str, payload: dict) -> dict:
         }
 
 
-def get_public(path: str) -> dict:
+def get_public(path: str, base_url: str = BASE_URL) -> dict:
     request = urllib.request.Request(
-        f"{BASE_URL}{path}",
+        f"{base_url}{path}",
         method="GET",
         headers={
             "Accept": "application/json",
@@ -141,10 +157,14 @@ def summarize_status(body: dict) -> dict:
     }
 
 
+def print_json(body: dict) -> None:
+    print(json.dumps(body, indent=2))
+
+
 def main(argv: list[str]) -> int:
     if len(argv) < 2 or argv[1] in {"-h", "--help", "help"}:
         print(
-            "Usage: atlas_cleanroom_bridge.py status | public-status | pairing-start | pairing-exchange <pairingId> <verificationCode> | query <text> | factory | control",
+            "Usage: atlas_cleanroom_bridge.py status | public-status | pairing-start | pairing-exchange <pairingId> <verificationCode> | query <text> | factory | control | control-health | control-status | control-tool-status | control-query <text>",
             file=sys.stderr,
         )
         return 2
@@ -152,42 +172,67 @@ def main(argv: list[str]) -> int:
     command = argv[1].lower().strip()
     try:
         if command == "status":
-            print(
-                json.dumps(
-                    summarize_status(
-                        post("/connectors/maxhermes/tool-status", {})
-                    ),
-                    indent=2,
+            print_json(
+                summarize_status(
+                    post("/connectors/maxhermes/tool-status", {})
                 )
             )
             return 0
 
         if command == "public-status":
-            print(
-                json.dumps(
-                    get_public("/public/maxhermes/tool-status"),
-                    indent=2,
+            print_json(get_public("/public/maxhermes/tool-status"))
+            return 0
+
+        if command == "control-health":
+            print_json(get_public("/health", base_url=CONTROL_PLANE_URL))
+            return 0
+
+        if command == "control-status":
+            print_json(get_public("/status", base_url=CONTROL_PLANE_URL))
+            return 0
+
+        if command == "control-tool-status":
+            print_json(
+                summarize_status(
+                    post(
+                        "/tool-status",
+                        {},
+                        base_url=CONTROL_PLANE_URL,
+                        headers=control_plane_auth_headers(),
+                    )
+                )
+            )
+            return 0
+
+        if command == "control-query":
+            text = " ".join(argv[2:]).strip()
+            if not text:
+                print("query text is required", file=sys.stderr)
+                return 2
+            print_json(
+                post(
+                    "/knowledge-query",
+                    {"query": text, "limit": 3},
+                    base_url=CONTROL_PLANE_URL,
+                    headers=control_plane_auth_headers(),
                 )
             )
             return 0
 
         if command == "pairing-start":
-            print(
-                json.dumps(
-                    post_public(
-                        "/public/maxhermes/pairing/start",
-                        {
-                            "requestedBy": "MaxHermes",
-                            "scopes": [
-                                "status",
-                                "connection-plan",
-                                "knowledge:read",
-                                "factory:check",
-                                "control-plane",
-                            ],
-                        },
-                    ),
-                    indent=2,
+            print_json(
+                post_public(
+                    "/public/maxhermes/pairing/start",
+                    {
+                        "requestedBy": "MaxHermes",
+                        "scopes": [
+                            "status",
+                            "connection-plan",
+                            "knowledge:read",
+                            "factory:check",
+                            "control-plane",
+                        ],
+                    },
                 )
             )
             return 0
@@ -196,16 +241,13 @@ def main(argv: list[str]) -> int:
             if len(argv) < 4:
                 print("pairingId and verificationCode are required", file=sys.stderr)
                 return 2
-            print(
-                json.dumps(
-                    post_public(
-                        "/public/maxhermes/pairing/exchange",
-                        {
-                            "pairingId": argv[2].strip(),
-                            "verificationCode": argv[3].strip(),
-                        },
-                    ),
-                    indent=2,
+            print_json(
+                post_public(
+                    "/public/maxhermes/pairing/exchange",
+                    {
+                        "pairingId": argv[2].strip(),
+                        "verificationCode": argv[3].strip(),
+                    },
                 )
             )
             return 0
@@ -215,37 +257,28 @@ def main(argv: list[str]) -> int:
             if not text:
                 print("query text is required", file=sys.stderr)
                 return 2
-            print(
-                json.dumps(
-                    post(
-                        "/connectors/maxhermes/knowledge-query",
-                        {"text": text, "requestedBy": "MaxHermes"},
-                    ),
-                    indent=2,
+            print_json(
+                post(
+                    "/connectors/maxhermes/knowledge-query",
+                    {"text": text, "requestedBy": "MaxHermes"},
                 )
             )
             return 0
 
         if command == "factory":
-            print(
-                json.dumps(
-                    post(
-                        "/connectors/maxhermes/factory-maintenance-check",
-                        {"requestedBy": "MaxHermes"},
-                    ),
-                    indent=2,
+            print_json(
+                post(
+                    "/connectors/maxhermes/factory-maintenance-check",
+                    {"requestedBy": "MaxHermes"},
                 )
             )
             return 0
 
         if command == "control":
-            print(
-                json.dumps(
-                    post(
-                        "/connectors/maxhermes/control-plane",
-                        {"requestedBy": "MaxHermes"},
-                    ),
-                    indent=2,
+            print_json(
+                post(
+                    "/connectors/maxhermes/control-plane",
+                    {"requestedBy": "MaxHermes"},
                 )
             )
             return 0

@@ -9,7 +9,11 @@ Use this skill to let MaxHermes/Mavis call the Atlas Clean-Room API directly ins
 
 ## Boundary
 
-Only use this base URL:
+Primary production control-plane URL:
+
+`https://atlas-maxhermes-control-plane.azurewebsites.net`
+
+Clean-room API URL:
 
 `https://atlas-cleanroom-api.azurewebsites.net`
 
@@ -32,6 +36,13 @@ If MiniMax does not expose a secure UI, API, CLI, OAuth, masked-input, or platfo
 
 Accepted environment variable names:
 
+For the Azure MaxHermes control plane:
+
+1. `MAXHERMES_CONTROL_PLANE_CLIENT_SECRET`
+2. `ATLAS_MAXHERMES_CONTROL_PLANE_CLIENT_SECRET`
+
+For the lower-level clean-room API fallback:
+
 1. `ATLAS_CLEANROOM_WEBHOOK_SECRET`
 2. `MAXHERMES_CLEANROOM_WEBHOOK_SECRET`
 
@@ -43,6 +54,10 @@ Temporary pairing token names:
 If neither exists, fail closed with exactly:
 
 `My hosted runtime is missing the clean-room webhook secret or short-lived pairing token, but the Azure endpoint exists.`
+
+If the control-plane secret is missing, fail closed with exactly:
+
+`My hosted runtime can reach the Azure MaxHermes control plane, but it does not have private control-plane authentication mounted.`
 
 ## Short-Lived Pairing
 
@@ -72,9 +87,40 @@ Pairing tokens are temporary, scoped, and not replacements for a proper MiniMax 
 
 Run the helper script from the skill root.
 
+### Control Plane Health
+
+Use to verify hosted MaxHermes can reach the Azure-owned production control plane.
+
+```bash
+python3 scripts/atlas_cleanroom_bridge.py control-health
+python3 scripts/atlas_cleanroom_bridge.py control-status
+```
+
+These calls are public read-only and do not require a secret.
+
+### Control Plane Tool Status
+
+Use this as the preferred production status path when `MAXHERMES_CONTROL_PLANE_CLIENT_SECRET` is mounted.
+
+```bash
+python3 scripts/atlas_cleanroom_bridge.py control-tool-status
+```
+
+If this returns `401` or the missing-auth message, say the hosted runtime can reach the Azure control plane but does not have private control-plane authentication mounted.
+
+### Control Plane Knowledge Query
+
+Use this as the preferred production knowledge path when `MAXHERMES_CONTROL_PLANE_CLIENT_SECRET` is mounted.
+
+```bash
+python3 scripts/atlas_cleanroom_bridge.py control-query "test clean-room knowledge connection"
+```
+
+This routes through the Azure MaxHermes control plane, then the clean-room API, then Notion/Onyx as allowed by the clean-room boundary.
+
 ### Tool Status
 
-Use before claiming that any tool is connected.
+Use this lower-level clean-room API path before claiming that any tool is connected if the production control-plane secret is not mounted but a clean-room webhook secret or pairing token exists.
 
 ```bash
 python3 scripts/atlas_cleanroom_bridge.py status
