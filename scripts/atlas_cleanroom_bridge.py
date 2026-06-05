@@ -20,6 +20,10 @@ SECRET_ENV_NAMES = (
     "ATLAS_CLEANROOM_WEBHOOK_SECRET",
     "MAXHERMES_CLEANROOM_WEBHOOK_SECRET",
 )
+SCREENPIPE_SECRET_ENV_NAMES = (
+    "SCREENPIPE_CLEANROOM_API_KEY",
+    "ATLAS_SCREENPIPE_CLEANROOM_API_KEY",
+)
 CONTROL_PLANE_SECRET_ENV_NAMES = (
     "MAXHERMES_CONTROL_PLANE_CLIENT_SECRET",
     "ATLAS_MAXHERMES_CONTROL_PLANE_CLIENT_SECRET",
@@ -54,6 +58,17 @@ def control_plane_auth_headers() -> dict:
 
     raise RuntimeError(
         "My hosted runtime can reach the Azure MaxHermes control plane, but it does not have private control-plane authentication mounted."
+    )
+
+
+def screenpipe_auth_headers() -> dict:
+    for name in SCREENPIPE_SECRET_ENV_NAMES:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return {"x-atlas-screenpipe-secret": value}
+
+    raise RuntimeError(
+        "My hosted runtime can reach the clean-room API, but it does not have Screenpipe context auth mounted."
     )
 
 
@@ -157,6 +172,31 @@ def summarize_status(body: dict) -> dict:
     }
 
 
+def summarize_notion_status(body: dict) -> dict:
+    configured = body.get("configuredConnectors", [])
+    blocked = body.get("blockedConnectors", [])
+    notion_configured = "notion" in configured
+    return {
+        "ok": bool(body.get("ok") and notion_configured),
+        "status": "notion_cleanroom_configured"
+        if notion_configured
+        else "notion_cleanroom_not_configured",
+        "connector": "notion",
+        "mode": "cleanroom_ledger_via_atlas_api",
+        "configured": notion_configured,
+        "blocked": "notion" in blocked,
+        "summary": body.get("summary"),
+        "privateActionsRequireAuthenticatedBridge": True,
+        "matrixMcpRequired": False,
+        "localNotionMcpRequired": False,
+        "notionTokenFromUserRequired": False,
+        "note": (
+            "Notion is connected through the Atlas clean-room API and Azure control plane. "
+            "Do not ask Ahmad for a Notion integration token or Atlas webhook secret in chat."
+        ),
+    }
+
+
 def print_json(body: dict) -> None:
     print(json.dumps(body, indent=2))
 
@@ -164,7 +204,7 @@ def print_json(body: dict) -> None:
 def main(argv: list[str]) -> int:
     if len(argv) < 2 or argv[1] in {"-h", "--help", "help"}:
         print(
-            "Usage: atlas_cleanroom_bridge.py status | public-status | pairing-start | pairing-exchange <pairingId> <verificationCode> | query <text> | factory | control | control-health | control-status | control-tool-status | control-query <text>",
+            "Usage: atlas_cleanroom_bridge.py status | public-status | notion-status | codex-operator-status | codex-request <text> | pairing-start | pairing-exchange <pairingId> <verificationCode> | query <text> | factory | control | screenpipe | control-health | control-status | control-tool-status | control-query <text>",
             file=sys.stderr,
         )
         return 2
@@ -181,6 +221,36 @@ def main(argv: list[str]) -> int:
 
         if command == "public-status":
             print_json(get_public("/public/maxhermes/tool-status"))
+            return 0
+
+        if command == "notion-status":
+            print_json(summarize_notion_status(get_public("/public/maxhermes/tool-status")))
+            return 0
+
+        if command == "codex-operator-status":
+            health = get_public("/health", base_url=CONTROL_PLANE_URL)
+            status = get_public("/status", base_url=CONTROL_PLANE_URL)
+            print_json(
+                {
+                    "ok": bool(health.get("ok") and status.get("ok")),
+                    "status": "codex_operator_bridge_ready"
+                    if health.get("ok") and status.get("ok")
+                    else "codex_operator_bridge_unready",
+                    "connectionType": "codex_operator_to_azure_control_plane",
+                    "codexDirectMcpServer": False,
+                    "matrixOrClawServerRequired": False,
+                    "controlPlane": {
+                        "url": CONTROL_PLANE_URL,
+                        "health": health.get("status"),
+                        "status": status.get("status"),
+                        "clientAuthConfigured": health.get("clientAuthConfigured"),
+                    },
+                    "note": (
+                        "Codex is connected as the local engineering/operator surface through the Azure MaxHermes control plane. "
+                        "There is no clean-room Codex MCP route named /codex or /invoke on Matrix or claw-server."
+                    ),
+                }
+            )
             return 0
 
         if command == "control-health":
@@ -213,6 +283,21 @@ def main(argv: list[str]) -> int:
                 post(
                     "/knowledge-query",
                     {"query": text, "limit": 3},
+                    base_url=CONTROL_PLANE_URL,
+                    headers=control_plane_auth_headers(),
+                )
+            )
+            return 0
+
+        if command == "codex-request":
+            text = " ".join(argv[2:]).strip()
+            if not text:
+                print("request text is required", file=sys.stderr)
+                return 2
+            print_json(
+                post(
+                    "/codex/operator-request",
+                    {"text": text, "requestedBy": "MaxHermes", "priority": "normal"},
                     base_url=CONTROL_PLANE_URL,
                     headers=control_plane_auth_headers(),
                 )
@@ -278,7 +363,27 @@ def main(argv: list[str]) -> int:
             print_json(
                 post(
                     "/connectors/maxhermes/control-plane",
-                    {"requestedBy": "MaxHermes"},
+                    {
+                        "requestedBy": "MaxHermes",
+                        "requestedConnectors": [
+                            "factoryai",
+                            "openrouter",
+                            "mem0",
+                            "zep",
+                            "obsidian",
+                            "screenpipe",
+                        ],
+                    },
+                )
+            )
+            return 0
+
+        if command == "screenpipe":
+            print_json(
+                post(
+                    "/connectors/screenpipe/context-test",
+                    {"source": "minimax-bridge", "health": {}},
+                    headers=screenpipe_auth_headers(),
                 )
             )
             return 0

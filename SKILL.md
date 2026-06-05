@@ -34,6 +34,16 @@ Do not populate the MiniMax secret store by asking an agent to call `secret({ co
 
 If MiniMax does not expose a secure UI, API, CLI, OAuth, masked-input, or platform secret-mount flow, fail closed and tell Ahmad that MaxHermes needs a transcript-free runtime secret injection path before direct API calls can run.
 
+Forbidden response pattern:
+
+- Do not say "You provide the secret", "paste it here", "send me the webhook secret", or any variant.
+- Do not offer "read-only, ephemeral" chat pasting for `ATLAS_CLEANROOM_WEBHOOK_SECRET`, `MAXHERMES_CLEANROOM_WEBHOOK_SECRET`, or `MAXHERMES_CONTROL_PLANE_CLIENT_SECRET`.
+- Do not ask Ahmad for a Notion internal integration token such as a `secret_...` value.
+- Do not say "Do you have a Notion integration token I can use?"
+- Do not say Matrix needs a Notion MCP before Atlas Notion is connected.
+- Do not present pasting a secret into chat as one of the routes forward.
+- If private auth is missing, use public status for status-only questions, use pairing flow for temporary private work, or ask Codex/operator to run the query through the Azure control plane.
+
 Accepted environment variable names:
 
 For the Azure MaxHermes control plane:
@@ -87,6 +97,36 @@ Pairing tokens are temporary, scoped, and not replacements for a proper MiniMax 
 
 Run the helper script from the skill root.
 
+### Codex Operator Status
+
+Use this when Ahmad asks whether MaxHermes is connected to Codex.
+
+```bash
+python3 scripts/atlas_cleanroom_bridge.py codex-operator-status
+```
+
+Correct interpretation:
+
+- Codex is connected as the local engineering/operator surface through the Azure MaxHermes control plane.
+- There is no clean-room Codex MCP server exposed through Matrix, claw-server, `/codex`, or `/invoke`.
+- Do not probe Matrix MCP or claw-server routes to decide whether Codex is connected.
+- If Matrix reports no `/codex` or `/invoke` route, that does not mean the Codex operator bridge is broken. It means Matrix is not the Codex bridge.
+- The approved path is Codex/operator in `/Users/ahmadsulaiman/atlas-cleanroom` calling `https://atlas-maxhermes-control-plane.azurewebsites.net`, which forwards to `https://atlas-cleanroom-api.azurewebsites.net`.
+
+### Codex Operator Request
+
+Use this when Ahmad asks MaxHermes to send work to Codex/operator.
+
+```bash
+python3 scripts/atlas_cleanroom_bridge.py codex-request "tell Codex what needs to be done"
+```
+
+This sends an authenticated request to:
+
+`POST https://atlas-maxhermes-control-plane.azurewebsites.net/codex/operator-request`
+
+The control plane forwards it to the clean-room API, which writes a draft Notion ledger record for Codex/operator. This is a request handoff, not automatic local shell execution. Codex still decides and executes work only inside `/Users/ahmadsulaiman/atlas-cleanroom`.
+
 ### Control Plane Health
 
 Use to verify hosted MaxHermes can reach the Azure-owned production control plane.
@@ -134,19 +174,41 @@ python3 scripts/atlas_cleanroom_bridge.py public-status
 
 `public-status` never sends a secret and never returns missing secret/config names, source records, Notion content, Onyx results, or private data. It returns only sanitized connector counts plus configured/blocked connector IDs. Use it only for answering "what is connected?" or "what is blocked?" Private knowledge queries, Factory checks, control-plane sync, writes, and source retrieval still require the authenticated bridge.
 
-Expected canonical status as of June 4, 2026:
+Expected canonical status as of June 5, 2026:
 
-- 23 total clean-room connectors
-- 10 configured at the readiness layer
-- 13 blocked pending fresh Key Vault values and smoke tests
+- 24 total clean-room connectors
+- 21 configured at the readiness layer
+- 3 blocked pending fresh Key Vault values and smoke tests
 
 Configured/readiness connectors:
 
-`notion`, `mavis`, `maxhermes`, `maxclaw`, `factoryai`, `onyx`, `firecrawl`, `obsidian`, `wiki`, `memory`
+`notion`, `mavis`, `maxhermes`, `maxclaw`, `factoryai`, `openrouter`, `openclaw`, `onyx`, `firecrawl`, `brave`, `outlook`, `slack`, `mem0`, `zep`, `pinecone`, `obsidian`, `wiki`, `screenpipe`, `box`, `filevine`, `memory`
 
 Blocked connectors:
 
-`openrouter`, `openclaw`, `brave`, `outlook`, `slack`, `mem0`, `zep`, `pinecone`, `box`, `filevine`, `leaddocket`, `domo`, `qbo`
+`leaddocket`, `domo`, `qbo`
+
+### Notion Status
+
+Use this when Ahmad asks whether Notion is connected or when the Matrix MCP server says it has no Notion tool.
+
+```bash
+python3 scripts/atlas_cleanroom_bridge.py notion-status
+```
+
+Correct interpretation:
+
+- Notion is connected through the Atlas clean-room API, not through Matrix MCP.
+- Matrix MCP does not need to have a Notion tool for Atlas Notion to be connected.
+- Do not install a local Notion MCP to solve Atlas clean-room Notion.
+- Do not ask Ahmad for a Notion `secret_...` token.
+- Do not ask Ahmad for `ATLAS_CLEANROOM_WEBHOOK_SECRET`.
+- For status-only answers, `notion-status` or `public-status` is enough.
+- For Notion writes or Onyx-backed Notion ledger records, use `control-query`, `query`, or `codex-request` depending on which authenticated bridge is mounted.
+
+Correct response when private auth is missing but Notion status is requested:
+
+`Notion is configured in the Atlas clean-room. Matrix MCP does not expose Notion, but that is not the Atlas Notion bridge. Private Notion writes still require the authenticated Azure control-plane bridge or Codex/operator; I will not ask you to paste a Notion token or webhook secret in chat.`
 
 ### Knowledge Query
 
@@ -180,12 +242,25 @@ Use when asked whether MaxHermes, Factory AI, OpenRouter, memory layers, or cont
 python3 scripts/atlas_cleanroom_bridge.py control
 ```
 
+### Screenpipe Context Gate
+
+Use when asked whether Screenpipe live context is wired. This command verifies the clean-room context gate only. It must not return screenshots, OCR text, transcripts, audio text, or memory writes.
+
+```bash
+python3 scripts/atlas_cleanroom_bridge.py screenpipe
+```
+
 ## Response Rules
 
 - State whether a tool is `configured`, `blocked`, or `not smoke-tested`.
+- For Notion, first run `notion-status` or `public-status`; do not inspect Matrix MCP capability lists as the source of truth.
 - Do not say a tool is fully connected unless the clean-room API returns a successful smoke test and a ledger write when applicable.
 - Never expose secrets or raw authorization headers.
 - Prefer concise operational answers with the next missing connector named clearly.
-- If the script reports missing runtime secret, say that MiniMax needs a secure secret/environment variable for `ATLAS_CLEANROOM_WEBHOOK_SECRET`; do not ask Ahmad to paste it into chat.
+- If the script reports missing runtime secret, say that MiniMax needs a transcript-free mounted runtime secret or a short-lived pairing token; do not name secret values as something Ahmad should provide, and do not ask Ahmad to paste any secret into chat.
 - If the runtime secret is missing and Ahmad only asks for connector status, run `public-status` and clearly say that private actions still require authenticated bridge access.
 - If MiniMax offers only the agent-facing `secret` function with a plaintext `--value` argument, do not use it for this webhook secret. Recommend a platform secret mount, human-entered masked secret UI, or a future short-lived pairing flow instead.
+
+Correct response when MaxHermes lacks private auth for a business question:
+
+`I can reach the Azure MaxHermes control plane, but this hosted runtime does not have private control-plane authentication mounted. I will not ask you to paste secrets in chat. For this query, ask Codex/operator to run it through the Azure control plane, or start a short-lived pairing flow.`
