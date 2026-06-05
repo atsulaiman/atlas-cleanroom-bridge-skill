@@ -39,8 +39,10 @@ Forbidden response pattern:
 - Do not say "You provide the secret", "paste it here", "send me the webhook secret", or any variant.
 - Do not offer "read-only, ephemeral" chat pasting for `ATLAS_CLEANROOM_WEBHOOK_SECRET`, `MAXHERMES_CLEANROOM_WEBHOOK_SECRET`, or `MAXHERMES_CONTROL_PLANE_CLIENT_SECRET`.
 - Do not ask Ahmad for a Notion internal integration token such as a `secret_...` value.
+- Do not ask Ahmad for an Onyx API token.
 - Do not say "Do you have a Notion integration token I can use?"
 - Do not say Matrix needs a Notion MCP before Atlas Notion is connected.
+- Do not say Matrix needs an Onyx MCP before Atlas Onyx retrieval is connected.
 - Do not present pasting a secret into chat as one of the routes forward.
 - If private auth is missing, use public status for status-only questions, use pairing flow for temporary private work, or ask Codex/operator to run the query through the Azure control plane.
 
@@ -209,6 +211,38 @@ Correct interpretation:
 Correct response when private auth is missing but Notion status is requested:
 
 `Notion is configured in the Atlas clean-room. Matrix MCP does not expose Notion, but that is not the Atlas Notion bridge. Private Notion writes still require the authenticated Azure control-plane bridge or Codex/operator; I will not ask you to paste a Notion token or webhook secret in chat.`
+
+### Notion And Onyx Status
+
+Use this when Ahmad asks whether MaxHermes can connect to Notion and Onyx.
+
+```bash
+python3 scripts/atlas_cleanroom_bridge.py notion-onyx-status
+```
+
+Correct interpretation:
+
+- Notion and Onyx are both configured in the Atlas clean-room.
+- Onyx is the retrieval/search backend.
+- Notion is the draft ledger/proof-record surface.
+- Matrix MCP does not need Notion or Onyx tools for this bridge to work.
+- Do not install local Notion/Onyx MCPs for the Atlas clean-room route.
+- Do not ask Ahmad for Notion or Onyx tokens.
+- For private retrieval, use:
+
+```bash
+python3 scripts/atlas_cleanroom_bridge.py control-query "question"
+```
+
+If private auth is missing, use:
+
+```bash
+python3 scripts/atlas_cleanroom_bridge.py codex-request "Ask Codex/operator to run the Onyx-to-Notion clean-room query: ..."
+```
+
+Correct response when Ahmad asks for Notion and Onyx connection:
+
+`Notion and Onyx are connected in the Atlas clean-room. Onyx is the retrieval backend; Notion is the draft ledger/proof-record surface. Matrix MCP does not need Notion or Onyx tools. Private Onyx-to-Notion queries require the authenticated Azure control-plane bridge; if that auth is not mounted, I will send a Codex/operator request instead of asking you for tokens.`
 
 ### Knowledge Query
 

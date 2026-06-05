@@ -197,6 +197,43 @@ def summarize_notion_status(body: dict) -> dict:
     }
 
 
+def summarize_notion_onyx_status(body: dict) -> dict:
+    configured = body.get("configuredConnectors", [])
+    blocked = body.get("blockedConnectors", [])
+    notion_configured = "notion" in configured
+    onyx_configured = "onyx" in configured
+    return {
+        "ok": bool(body.get("ok") and notion_configured and onyx_configured),
+        "status": "notion_onyx_cleanroom_configured"
+        if notion_configured and onyx_configured
+        else "notion_onyx_cleanroom_not_configured",
+        "connectors": {
+            "notion": {
+                "configured": notion_configured,
+                "blocked": "notion" in blocked,
+                "role": "draft_ledger_and_proof_records",
+            },
+            "onyx": {
+                "configured": onyx_configured,
+                "blocked": "onyx" in blocked,
+                "role": "retrieval_search_backend",
+            },
+        },
+        "summary": body.get("summary"),
+        "privateRetrievalRequiresAuthenticatedBridge": True,
+        "matrixMcpRequired": False,
+        "localNotionMcpRequired": False,
+        "notionTokenFromUserRequired": False,
+        "onyxTokenFromUserRequired": False,
+        "approvedPrivateCommand": "control-query",
+        "note": (
+            "Notion and Onyx are connected through the Atlas clean-room bridge. "
+            "Use control-query for private retrieval when the Azure control-plane secret is mounted; "
+            "otherwise send a Codex/operator request. Do not ask Ahmad for Notion or Onyx tokens in chat."
+        ),
+    }
+
+
 def print_json(body: dict) -> None:
     print(json.dumps(body, indent=2))
 
@@ -204,7 +241,7 @@ def print_json(body: dict) -> None:
 def main(argv: list[str]) -> int:
     if len(argv) < 2 or argv[1] in {"-h", "--help", "help"}:
         print(
-            "Usage: atlas_cleanroom_bridge.py status | public-status | notion-status | codex-operator-status | codex-request <text> | pairing-start | pairing-exchange <pairingId> <verificationCode> | query <text> | factory | control | screenpipe | control-health | control-status | control-tool-status | control-query <text>",
+            "Usage: atlas_cleanroom_bridge.py status | public-status | notion-status | notion-onyx-status | codex-operator-status | codex-request <text> | pairing-start | pairing-exchange <pairingId> <verificationCode> | query <text> | factory | control | screenpipe | control-health | control-status | control-tool-status | control-query <text>",
             file=sys.stderr,
         )
         return 2
@@ -225,6 +262,10 @@ def main(argv: list[str]) -> int:
 
         if command == "notion-status":
             print_json(summarize_notion_status(get_public("/public/maxhermes/tool-status")))
+            return 0
+
+        if command == "notion-onyx-status":
+            print_json(summarize_notion_onyx_status(get_public("/public/maxhermes/tool-status")))
             return 0
 
         if command == "codex-operator-status":
